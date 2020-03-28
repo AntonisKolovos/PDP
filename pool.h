@@ -10,10 +10,16 @@ enum PP_Control_Command {
 	PP_RUNCOMPLETE=4
 };
 
+typedef enum PP_Actor_Type {
+	Grid=0,
+	Squirrel=1,
+	Clock=2,
+}Actor_type;
+
 // An example data package which combines the command with some optional data, an example and can be extended
 struct PP_Control_Package {
 	enum PP_Control_Command command;
-    int data;
+	int data;
 };
 
 // Initialises the process pool
@@ -32,5 +38,9 @@ int startWorkerProcess();
 void shutdownPool();
 // Retrieves the optional data associated with the command, provides an example of how this can be done
 int getCommandData();
+
+void setActorType(int, Actor_type);
+
+Actor_type getActorType(int);
 
 #endif /* POOL_H_ */

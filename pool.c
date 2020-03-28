@@ -275,3 +275,13 @@ static struct PP_Control_Package createCommandPackage(enum PP_Control_Command de
 	package.command = desiredCommand;
 	return package;
 }
+
+void setActorType(int pid, Actor_type type){
+	MPI_Send(&type,1,MPI_INT,pid,0,MPI_COMM_WORLD);
+}
+
+Actor_type getActorType(int parent){
+	int type;
+	MPI_Recv(&type,1,MPI_INT,parent,0,MPI_COMM_WORLD,MPI_STATUS_IGNORE);
+	return type;
+}
