@@ -13,6 +13,7 @@ static void workerCode();
 
 int main(int argc, char *argv[])
 {
+
 	// Call MPI initialize first
 	MPI_Init(&argc, &argv);
 	/*
@@ -28,6 +29,7 @@ int main(int argc, char *argv[])
 	}
 	else if (statusCode == 2)
 	{
+
 		/*
 		 * This is the master, each call to master poll will block until a message is received and then will handle it and return
          * 1 to continue polling and running the pool and 0 to quit.

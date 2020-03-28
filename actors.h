@@ -3,6 +3,7 @@
 #define NCELL 16
 #define CLOCK_TAG 100
 #define SQUIRREL_TAG 200
+#define RUNTIME 5
 
 void Grid_work(int);
 void Clock_work(int);
