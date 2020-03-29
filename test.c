@@ -37,6 +37,8 @@ int main(int argc, char *argv[])
          * shuts the entire pool down
 		 */
 		int myRank;
+		void *buffer =malloc(BUFF_SIZE);
+		MPI_Buffer_attach(buffer,BUFF_SIZE);
 		MPI_Comm_rank(MPI_COMM_WORLD, &myRank);
 		printf("Master, my rank=%d \n", myRank);
 		//Create Workers
