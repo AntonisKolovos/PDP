@@ -52,10 +52,7 @@ int main(int argc, char *argv[])
 		int squirrelPid =startWorkerProcess();
 		setActorType(squirrelPid,Squirrel);
 
-		MPI_Irecv(NULL, 0, MPI_INT, gridPid, 0, MPI_COMM_WORLD, &initialWorkerRequests[0]);
-		MPI_Irecv(NULL, 0, MPI_INT, clockPid, 0, MPI_COMM_WORLD, &initialWorkerRequests[1]);
-		MPI_Irecv(NULL, 0, MPI_INT, squirrelPid, 0, MPI_COMM_WORLD, &initialWorkerRequests[2]);
-
+	
 		int activeWorkers = 3;
 		int i, returnCode;
 
@@ -64,25 +61,7 @@ int main(int argc, char *argv[])
 		while (masterStatus)
 		{
 			masterStatus = masterPoll();
-			for (i = 0; i < NWORK; i++)
-			{
-				// Checks all outstanding workers that master spawned to see if they have completed
-				if (initialWorkerRequests[i] != MPI_REQUEST_NULL)
-				{
-					MPI_Status status;
-					MPI_Test(&initialWorkerRequests[i], &returnCode, &status);
-					if (returnCode)
-					{
-						activeWorkers--;
-						printf("Received termination code from %d \n", status.MPI_SOURCE);
-						
-					}
-					
-				}
-			}
-			// If we have no more active workers then quit poll loop which will effectively shut the pool down when  processPoolFinalise is called
-			if (activeWorkers == 0)
-				break;
+			
 		}
 	}
 	// Finalizes the process pool, call this before closing down MPI
