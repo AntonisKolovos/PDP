@@ -4,8 +4,8 @@
 #include <stdio.h>
 #include "squirrel-functions.h"
 
-int calcPopInfux();
-int calcInfectionLvl();
+int calcPopInfux(int popinfulx[NCELL][3], int);
+int calcInfectionLvl(int infectionLvl[NCELL][2], int);
 void Grid_work(int parentID)
 {
 
@@ -13,14 +13,15 @@ void Grid_work(int parentID)
     MPI_Comm_rank(MPI_COMM_WORLD, &myRank);
     int myActor = getCommandData(); // We encode the parent ID in the wake up command data
     int populationInflux[NCELL][3];
-    int infectionLevel[NCELL][3];
+    int infectionLevel[NCELL][2];
     int i, j;
     for (i = 0; i < NCELL; i++)
     {
         for (j = 0; j < 3; j++)
         {
             populationInflux[i][j] = 0;
-            infectionLevel[i][j] = 0;
+            if (j < 2)
+                infectionLevel[i][j] = 0;
         }
     }
 
@@ -39,59 +40,37 @@ void Grid_work(int parentID)
     while (running)
     {
 
-
-        //Issue receive for clock signal
-        MPI_Irecv(NULL, 0, MPI_INT, 2, CLOCK_TAG, MPI_COMM_WORLD, &request[0]);
-        inMonth = 1;
-        while (inMonth)
+        int receiveMsg = 0;
+        MPI_Iprobe(MPI_ANY_SOURCE, GRID_TAG, MPI_COMM_WORLD, &receiveMsg, &status);
+        if (receiveMsg)
         {
+            MPI_Recv(inbound, 2, MPI_INT, status.MPI_SOURCE, GRID_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            sum++;
+            MPI_Bsend(outbound, 2, MPI_INT, status.MPI_SOURCE, SQUIRREL_TAG, MPI_COMM_WORLD);
 
-            if (!pendingReceive)
-            {   
-                //Issue Receive for squirrel message
-                MPI_Irecv(inbound, 2, MPI_INT, MPI_ANY_SOURCE, GRID_TAG, MPI_COMM_WORLD, &request[1]);
-                pendingReceive=1;
-            }
-
-            int flag = 0;
-            MPI_Test(&request[0], &flag, MPI_STATUS_IGNORE);
-            if (flag)
-            {
-                printf("Grid received clock signal, month=%d, sum=%d \n", month + 1,sum);
-                month++;
-                inMonth = 0;
-                //pendingReceive = 0;
-
-                //if(pendingReceive) MPI_Wait(&request[1],MPI_STATUS_IGNORE);
-
-            }
-            int receiveMsg = 0;
-            MPI_Test(&request[1], &receiveMsg, &status);
-
-            if (receiveMsg)
-            {
-                sum++;
-                MPI_Ssend(outbound, 2, MPI_INT, status.MPI_SOURCE, SQUIRREL_TAG, MPI_COMM_WORLD);
-                //Send values to squirrel
-                outbound[0] = calcPopInfux();
-                outbound[1] = calcInfectionLvl();
-                //Add the squirrel values
-                populationInflux[inbound[0]][month % 3]++;
-                infectionLevel[inbound[0]][month % 2] += inbound[1];
-              
-                //  Issue another receive
-                pendingReceive = 0;
-                //MPI_Wait(&request[3], MPI_STATUS_IGNORE);
-
-            }
-            //Check if the simulation is still running
-            if (shouldWorkerStop())
-            {
-                running = 0;
-                inMonth = 0;
-            }
+            //Send values to squirrel
+            //outbound[0] = calcPopInfux(populationInflux,inbound[0]);
+            //outbound[1] = calcInfectionLvl(infectionLevel,inbound[0]);
+            //Add the squirrel values
+            populationInflux[inbound[0]][month % 3]++;
+            infectionLevel[inbound[0]][month % 2] += inbound[1];
         }
-        
+
+        int flag = 0;
+        //MPI_Test(&request[0], &flag, MPI_STATUS_IGNORE);
+        MPI_Iprobe(2, CLOCK_TAG, MPI_COMM_WORLD, &flag, &status);
+
+        if (flag)
+        {
+            MPI_Recv(NULL, 0, MPI_INT, 2, CLOCK_TAG, MPI_COMM_WORLD, &status);
+            printf("Grid received clock signal, month=%d, sum=%d \n", month + 1, sum);
+            month++;
+        }
+        //Check if the simulation is still running
+        if (shouldWorkerStop())
+        {
+            running = 0;
+        }
     }
     for (j = 0; j < 3; j++)
     {
@@ -180,21 +159,26 @@ void Squirrel_work(int parentID)
         //Prepare Data packet for Grid Actor
         outbound[0] = getCellFromPosition(x, y);
         outbound[1] = infected;
-        MPI_Isend(outbound, 2, MPI_INT, 1, GRID_TAG, MPI_COMM_WORLD,&request[0]);
-        MPI_Irecv(inbound, 2, MPI_INT, 1, SQUIRREL_TAG, MPI_COMM_WORLD, &request[1]);
-        blocked = 1;
+        //Send the data
 
+        MPI_Bsend(outbound, 2, MPI_INT, 1, GRID_TAG, MPI_COMM_WORLD);
+        // MPI_Irecv(inbound, 2, MPI_INT, 1, SQUIRREL_TAG, MPI_COMM_WORLD, &request[1]);
+        blocked = 1;
         while (blocked)
         {
-            MPI_Test(&request[1], &blocked, MPI_STATUS_IGNORE);
+            MPI_Irecv(inbound, 2, MPI_INT, 1, SQUIRREL_TAG, MPI_COMM_WORLD, &request[1]);
+
             if (shouldWorkerStop())
             {
                 printf("Squirrel Terminating... \n");
                 blocked = 0;
                 move = 0;
             }
+            MPI_Test(&request[1], &blocked, MPI_STATUS_IGNORE);
         }
-        MPI_Wait(&request[0],MPI_STATUS_IGNORE);
+        //Store data
+
+        //  MPI_Wait(&request[0],MPI_STATUS_IGNORE);
         step++;
     }
     printf("Squirrel has stopped step=%d\n", step);
@@ -204,12 +188,22 @@ void Squirrel_work(int parentID)
     workerStatus = workerSleep();
 }
 
-int calcPopInfux()
+int calcPopInfux(int popInflux[NCELL][3], int cell)
 {
-    return 666;
+    int i, sum = 0;
+    for (i = 0; i < 3; i++)
+    {
+        sum += popInflux[cell][i];
+    }
+    return sum;
 }
 
-int calcInfectionLvl()
+int calcInfectionLvl(int infectionLvl[NCELL][2], int cell)
 {
-    return 777;
+    int i, sum = 0;
+    for (i = 0; i < 3; i++)
+    {
+        sum += infectionLvl[cell][i];
+    }
+    return sum;
 }
