@@ -47,6 +47,8 @@ int main(int argc, char *argv[])
 		setActorType(gridPid,Grid);
 		int clockPid = startWorkerProcess();//Clock pid =2
 		setActorType(clockPid,Clock);
+
+		
 		int squirrelPid =startWorkerProcess();
 		setActorType(squirrelPid,Squirrel);
 

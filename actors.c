@@ -4,24 +4,30 @@
 #include <stdio.h>
 #include "squirrel-functions.h"
 
-int calcPopInfux(int popinfulx[NCELL][3], int);
-int calcInfectionLvl(int infectionLvl[NCELL][2], int);
+void calcPopInfux(int populationStore[NCELL][3], int popInfluxLvl[NCELL]);
+void calcInfectionLvl(int infectionStore[NCELL][2], int infectionLvl[NCELL]);
+float avgPop(int popInfux[50]);
+float avgInf(int infectionLvl[50]);
 void Grid_work(int parentID)
 {
 
     int myRank, parentId = 0;
     MPI_Comm_rank(MPI_COMM_WORLD, &myRank);
     int myActor = getCommandData(); // We encode the parent ID in the wake up command data
-    int populationInflux[NCELL][3];
-    int infectionLevel[NCELL][2];
+    int populationStore[NCELL][3];
+    int infectionStore[NCELL][2];
+    int popInfluxLvl[NCELL];
+    int infectionLvl[NCELL];
     int i, j;
     for (i = 0; i < NCELL; i++)
     {
+        popInfluxLvl[i] = 0;
+        infectionLvl[i] = 0;
         for (j = 0; j < 3; j++)
         {
-            populationInflux[i][j] = 0;
+            populationStore[i][j] = 0;
             if (j < 2)
-                infectionLevel[i][j] = 0;
+                infectionStore[i][j] = 0;
         }
     }
 
@@ -46,25 +52,30 @@ void Grid_work(int parentID)
         {
             MPI_Recv(inbound, 2, MPI_INT, status.MPI_SOURCE, GRID_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
             sum++;
-            MPI_Bsend(outbound, 2, MPI_INT, status.MPI_SOURCE, SQUIRREL_TAG, MPI_COMM_WORLD);
 
             //Send values to squirrel
-            //outbound[0] = calcPopInfux(populationInflux,inbound[0]);
-            //outbound[1] = calcInfectionLvl(infectionLevel,inbound[0]);
+            outbound[0] = popInfluxLvl[inbound[0]];
+            outbound[1] = infectionLvl[inbound[0]];
+            MPI_Bsend(outbound, 2, MPI_INT, status.MPI_SOURCE, SQUIRREL_TAG, MPI_COMM_WORLD);
+
             //Add the squirrel values
-            populationInflux[inbound[0]][month % 3]++;
-            infectionLevel[inbound[0]][month % 2] += inbound[1];
+            populationStore[inbound[0]][month % 3]++;
+            infectionStore[inbound[0]][month % 2] += inbound[1];
         }
 
         int flag = 0;
-        //MPI_Test(&request[0], &flag, MPI_STATUS_IGNORE);
         MPI_Iprobe(2, CLOCK_TAG, MPI_COMM_WORLD, &flag, &status);
 
         if (flag)
         {
             MPI_Recv(NULL, 0, MPI_INT, 2, CLOCK_TAG, MPI_COMM_WORLD, &status);
             printf("Grid received clock signal, month=%d, sum=%d \n", month + 1, sum);
+            calcInfectionLvl(infectionStore, infectionLvl);
+            calcPopInfux(populationStore, popInfluxLvl);
             month++;
+            for(i=0;i<NCELL;i++){
+                printf("%d ",popInfluxLvl[i]);
+            }
         }
         //Check if the simulation is still running
         if (shouldWorkerStop())
@@ -72,24 +83,7 @@ void Grid_work(int parentID)
             running = 0;
         }
     }
-    for (j = 0; j < 3; j++)
-    {
-        for (i = 0; i < NCELL; i++)
-        {
 
-            printf("%d, ", populationInflux[i][j]);
-        }
-        printf("\n");
-    }
-    for (j = 0; j < 2; j++)
-    {
-        for (i = 0; i < NCELL; i++)
-        {
-
-            printf("%d, ", infectionLevel[i][j]);
-        }
-        printf("\n");
-    }
     //Send termination code to master
     MPI_Send(NULL, 0, MPI_INT, 0, 0, MPI_COMM_WORLD);
     printf("Grid, my sum=%d Going to Sleep\n", sum);
@@ -135,14 +129,16 @@ void Squirrel_work(int parentID)
     printf("Worker on process %d, i am the Squirrel  )\n", myRank);
 
     int workerStatus = 1;
-    long seed = -1234;
-
+    long seed = -1-myRank;  
     initialiseRNG(&seed);
-    int move = 1;
+    int popInflux[50]={0};
+    int infectionLvl[50]={0};
+    int alive = 1;
     float x, y;
     long state;
     int infected = 0;
-    squirrelStep(0, 0, &x, &y, &state);
+    int infectedSteps=0;
+    squirrelStep(0, 0, &x, &y, &seed);
     printf("Initial position %f,%f\n", x, y);
     MPI_Request request[2];
     // MPI_Irecv(NULL,0,MPI_INT,0,SQUIRREL_TAG,MPI_COMM_WORLD,&request[0]);
@@ -150,10 +146,10 @@ void Squirrel_work(int parentID)
     int step = 0;
     int outbound[2];
     int inbound[2];
-    while (move)
+    while (alive)
     {
         float x_new, y_new;
-        squirrelStep(x, y, &x_new, &y_new, &state);
+        squirrelStep(x, y, &x_new, &y_new, &seed);
         x = x_new;
         y = y_new;
         //Prepare Data packet for Grid Actor
@@ -162,22 +158,47 @@ void Squirrel_work(int parentID)
         //Send the data
 
         MPI_Bsend(outbound, 2, MPI_INT, 1, GRID_TAG, MPI_COMM_WORLD);
-        // MPI_Irecv(inbound, 2, MPI_INT, 1, SQUIRREL_TAG, MPI_COMM_WORLD, &request[1]);
-        blocked = 1;
-        while (blocked)
+        MPI_Irecv(inbound, 2, MPI_INT, 1, SQUIRREL_TAG, MPI_COMM_WORLD, &request[1]);
+        blocked = 0;
+        while (blocked == 0)
         {
-            MPI_Irecv(inbound, 2, MPI_INT, 1, SQUIRREL_TAG, MPI_COMM_WORLD, &request[1]);
+            //MPI_Irecv(inbound, 2, MPI_INT, 1, SQUIRREL_TAG, MPI_COMM_WORLD, &request[1]);
+            MPI_Test(&request[1], &blocked, MPI_STATUS_IGNORE);
 
             if (shouldWorkerStop())
             {
                 printf("Squirrel Terminating... \n");
-                blocked = 0;
-                move = 0;
+                blocked = 1;
+                alive = 0;
             }
-            MPI_Test(&request[1], &blocked, MPI_STATUS_IGNORE);
         }
-        //Store data
 
+        //Store data
+        popInflux[step%50]=inbound[0];
+        infectionLvl[step%50]=inbound[1];
+
+        //Determine if infected 
+        infected=willCatchDisease(avgInf(infectionLvl),&seed);
+        if(infected){
+            infectedSteps++;
+        }
+
+        //Determine if i will die
+        if((infectedSteps>50)&&willDie(&seed))
+        {
+            alive=0;
+            printf("I died!\n");
+        }
+
+        //Determine if i will give birth
+        if(step%50==0){
+            if(willGiveBirth(avgPop(popInflux),&seed)){
+                printf("New Squirrel!\n");
+                //int child=startWorkerProcess();
+                //setActorType(child,Squirrel);
+            } 
+
+        }
         //  MPI_Wait(&request[0],MPI_STATUS_IGNORE);
         step++;
     }
@@ -188,22 +209,44 @@ void Squirrel_work(int parentID)
     workerStatus = workerSleep();
 }
 
-int calcPopInfux(int popInflux[NCELL][3], int cell)
+void calcPopInfux(int populationStore[NCELL][3], int popInfluxLvl[NCELL])
 {
-    int i, sum = 0;
-    for (i = 0; i < 3; i++)
-    {
-        sum += popInflux[cell][i];
+    
+    int i, j;
+    for (i=0;i<NCELL;i++){
+        popInfluxLvl[i] = 0;
+        for (j = 0; j < 3; j++)
+        {
+            popInfluxLvl[i] += populationStore[i][j];
+        }
+
     }
-    return sum;
 }
 
-int calcInfectionLvl(int infectionLvl[NCELL][2], int cell)
+void calcInfectionLvl(int infectionStore[NCELL][2], int infectionLvl[NCELL])
 {
-    int i, sum = 0;
-    for (i = 0; i < 3; i++)
+    int i, j;
+    for (i = 0; i < NCELL; i++)
     {
-        sum += infectionLvl[cell][i];
+        infectionLvl[i];
+         for (j = 0; j < 2; j++)
+        {
+        infectionLvl[i] += infectionStore[i][j];
+        }
     }
-    return sum;
+}
+
+float avgPop(int popInfux[50]){
+    int i,avg=0;
+    for (i=0;i<50;i++){
+        avg+=popInfux[i];
+    }
+    return avg/50;
+}
+float avgInf(int infectionLvl[50]){
+     int i,avg=0;
+    for (i=0;i<50;i++){
+        avg+=infectionLvl[i];
+    }
+    return avg/50;
 }
