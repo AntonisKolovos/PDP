@@ -10,7 +10,7 @@
 
 static void workerCode();
 
-
+void setInfected(int,int);
 int main(int argc, char *argv[])
 {
 
@@ -49,17 +49,27 @@ int main(int argc, char *argv[])
 		setActorType(clockPid,Clock);
 
 		
-		int squirrelPid =startWorkerProcess();
-		setActorType(squirrelPid,Squirrel);
+		
+		//Spawn initial squirrels
+		int i,returnCode;
+		for (i=0;i<INIT_SQUIRRELS;i++){
+			int squirrelPid =startWorkerProcess();
+			setActorType(squirrelPid,Squirrel);
+			if(i<INFECTED)setInfected(squirrelPid, 1);
+			else setInfected(squirrelPid,0);
+		}
 
-	
-		int activeWorkers = 3;
-		int i, returnCode;
 
-	
 		int masterStatus = masterPoll();
+		MPI_Irecv(NULL,0,MPI_INT,clockPid,0,MPI_COMM_WORLD,&initialWorkerRequests[0]);
 		while (masterStatus)
 		{
+			
+			MPI_Test(&initialWorkerRequests[0],&returnCode,MPI_STATUS_IGNORE);
+			if(returnCode){
+				printf("Master shutting down...\n");
+				break;
+			}
 			masterStatus = masterPoll();
 			
 		}
@@ -79,4 +89,8 @@ static void workerCode()
 	if (myActor == Grid) Grid_work(parentID);
 	else if (myActor == Clock) Clock_work(parentID);
 	else if (myActor == Squirrel)Squirrel_work(parentID);
+}
+
+void setInfected(int pid,int infected){
+	MPI_Bsend(&infected,1,MPI_INT,pid,SQUIRREL_TAG,MPI_COMM_WORLD);
 }
