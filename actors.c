@@ -14,10 +14,12 @@ void Grid_work(int parentID)
     int myRank, parentId = 0;
     MPI_Comm_rank(MPI_COMM_WORLD, &myRank);
     int myActor = getCommandData(); // We encode the parent ID in the wake up command data
-    int populationStore[NCELL][3];
-    int infectionStore[NCELL][2];
-    int popInfluxLvl[NCELL];
-    int infectionLvl[NCELL];
+    int populationStore[NCELL][3]={0};
+    int infectionStore[NCELL][2]={0};
+    int popInfluxLvl[NCELL]={0};
+    int infectionLvl[NCELL]={0};
+    int currentMonthPop=0;
+    int currentMonthInf=0;
     int i, j;
     for (i = 0; i < NCELL; i++)
     {
@@ -31,7 +33,7 @@ void Grid_work(int parentID)
         }
     }
 
-    printf("Worker on process %d, i am the Grid \n", myRank);
+   if (DEBUG) printf("Worker on process %d, i am the Grid \n", myRank);
 
     int inMonth = 1;
     int month = 0;
@@ -60,7 +62,8 @@ void Grid_work(int parentID)
 
             //Add the squirrel values
             populationStore[inbound[0]][month % 3]++;
-            infectionStore[inbound[0]][month % 2] += inbound[1];
+            infectionStore[inbound[0]][month % 2]+= inbound[1];
+           
         }
 
         int flag = 0;
@@ -69,14 +72,27 @@ void Grid_work(int parentID)
         if (flag)
         {
             MPI_Recv(NULL, 0, MPI_INT, 2, CLOCK_TAG, MPI_COMM_WORLD, &status);
-            printf("Grid received clock signal, month=%d, sum=%d \n", month + 1, sum);
+           if (DEBUG) printf("Grid received clock signal, month=%d, sum=%d \n", month + 1, sum);
+
+
+              
+            
+            //calculate the current values
             calcInfectionLvl(infectionStore, infectionLvl);
             calcPopInfux(populationStore, popInfluxLvl);
+
+            //Send them to the master for printing
+            MPI_Ssend(popInfluxLvl,NCELL,MPI_INT,0,GRID_TAG,MPI_COMM_WORLD);
+            MPI_Ssend(infectionLvl,NCELL,MPI_INT,0,GRID_TAG,MPI_COMM_WORLD);
+            MPI_Ssend(&month,1,MPI_INT,0,GRID_TAG,MPI_COMM_WORLD);
             month++;
-            for (i = 0; i < NCELL; i++)
-            {
-                printf("%d ", popInfluxLvl[i]);
-            }
+
+            //Zero this month's values 
+            for (i=0;i<NCELL;i++){
+                populationStore[i][month % 3]=0;
+                infectionStore[i][month % 2]=0;
+            }         
+ 
         }
         //Check if the simulation is still running
         if (shouldWorkerStop())
@@ -85,7 +101,7 @@ void Grid_work(int parentID)
         }
     }
 
-    printf("Grid, my sum=%d Going to Sleep\n", sum);
+  if (DEBUG)  printf("Grid, my sum=%d Going to Sleep\n", sum);
 }
 
 void Clock_work(int parentID)
@@ -106,13 +122,13 @@ void Clock_work(int parentID)
         double time = MPI_Wtime();
         while (MPI_Wtime() - time < 1)
             ;
-        printf("1 month passed!\n");
+      if (DEBUG)  printf("1 month passed!\n");
         MPI_Send(NULL, 0, MPI_INT, gridPid, CLOCK_TAG, MPI_COMM_WORLD);
     }
     shutdownPool();
 
     MPI_Ssend(NULL, 0, MPI_INT, 0, 0, MPI_COMM_WORLD);
-    printf("Clock, my rank=%d Going to Sleep\n", myRank);
+   if (DEBUG) printf("Clock, my rank=%d Going to Sleep\n", myRank);
 }
 
 void Squirrel_work(int parentID)
@@ -128,10 +144,10 @@ void Squirrel_work(int parentID)
     long state;
     int infected = 0;
     MPI_Recv(&infected,1,MPI_INT,0,SQUIRREL_TAG,MPI_COMM_WORLD,MPI_STATUS_IGNORE);
-    printf("Worker on process %d, i am the Squirrel, infected=%d  )\n", myRank,infected);
+  if (DEBUG)  printf("Worker on process %d, i am the Squirrel, infected=%d  )\n", myRank,infected);
     int infectedSteps = 0;
     squirrelStep(0, 0, &x, &y, &seed);
-    printf("Initial position %f,%f\n", x, y);
+    //printf("Initial position %f,%f\n", x, y);
     MPI_Request request[2];
     // MPI_Irecv(NULL,0,MPI_INT,0,SQUIRREL_TAG,MPI_COMM_WORLD,&request[0]);
     int blocked, flag, cell;
@@ -159,7 +175,7 @@ void Squirrel_work(int parentID)
 
             if (shouldWorkerStop())
             {
-                printf("Squirrel Terminating... \n");
+             if (DEBUG)   printf("Squirrel Terminating... \n");
                 blocked = 1;
                 alive = 0;
             }
@@ -182,7 +198,11 @@ void Squirrel_work(int parentID)
         if ((infectedSteps > 50) && willDie(&seed))
         {
             alive = 0;
-            printf("I died!\n");
+            int send=0;
+            //Notify the master that I have died,
+            MPI_Bsend(&send,1,MPI_INT,0,SQUIRREL_TAG,MPI_COMM_WORLD);
+          if (DEBUG)  printf("Squirrel %d ,I died!\n",myRank);
+
         }
 
         //Determine if i will give birth
@@ -190,16 +210,16 @@ void Squirrel_work(int parentID)
         {
             if (willGiveBirth(avgPop(popInflux), &seed))
             {
-                //printf("New Squirrel!\n");
-                //int child=startWorkerProcess();
-                //setActorType(child,Squirrel);
+              if (DEBUG)  printf("New Squirrel!\n");
+                int send=1;
+                MPI_Bsend(&send,1,MPI_INT,0,SQUIRREL_TAG,MPI_COMM_WORLD);
             }
         }
         //  MPI_Wait(&request[0],MPI_STATUS_IGNORE);
         if(alive)step++;
     }
-    printf("Squirrel has stopped step=%d\n", step);
-    printf("Squirrel, my rank=%d Going to Sleep\n", myRank);
+  if (DEBUG)  printf("Squirrel has stopped step=%d\n", step);
+   if (DEBUG) printf("Squirrel, my rank=%d Going to Sleep\n", myRank);
     workerSleep();
 }
 
@@ -222,7 +242,7 @@ void calcInfectionLvl(int infectionStore[NCELL][2], int infectionLvl[NCELL])
     int i, j;
     for (i = 0; i < NCELL; i++)
     {
-        infectionLvl[i];
+        infectionLvl[i]=0;
         for (j = 0; j < 2; j++)
         {
             infectionLvl[i] += infectionStore[i][j];
