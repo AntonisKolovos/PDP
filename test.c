@@ -11,8 +11,8 @@
 static void workerCode();
 
 void setInfected(int, int);
-void printMonthResults(int, int);
-void receiveSquirrelMsg(MPI_Status , int *);
+void printMonthResults(int, int,int);
+void receiveSquirrelMsg(MPI_Status , int *,int*);
 
 int main(int argc, char *argv[])
 {
@@ -54,15 +54,18 @@ int main(int argc, char *argv[])
 		setActorType(clockPid, Clock);
 
 		//Spawn initial squirrels
-		int i, returnCode, activeSquirrels = 0;
+		int i, returnCode, activeSquirrels = 0,infectedSquirrels=0;
 		for (i = 0; i < INIT_SQUIRRELS; i++)
 		{
 			int squirrelPid = startWorkerProcess();
 			setActorType(squirrelPid, Squirrel);
-			if (i < INFECTED)
+			if (i < INFECTED){
 				setInfected(squirrelPid, 1);
-			else
+				infectedSquirrels++;
+			}
+			else{
 				setInfected(squirrelPid, 0);
+			}
 			activeSquirrels++;
 		}
 		if (DEBUG)
@@ -89,7 +92,7 @@ int main(int argc, char *argv[])
 			MPI_Iprobe(gridPid, MPI_ANY_TAG, MPI_COMM_WORLD, &receiveMsg, &status);
 			if (receiveMsg)
 			{
-				printMonthResults(gridPid, activeSquirrels);
+				printMonthResults(gridPid, activeSquirrels,infectedSquirrels);
 			}
 
 			//Check for Squirrel message
@@ -97,7 +100,7 @@ int main(int argc, char *argv[])
 			MPI_Iprobe(MPI_ANY_SOURCE, SQUIRREL_TAG, MPI_COMM_WORLD, &receiveMsg, &status);
 			if (receiveMsg)
 			{
-				receiveSquirrelMsg(status, &activeSquirrels);
+				receiveSquirrelMsg(status, &activeSquirrels,&infectedSquirrels);
 			}
 		}
 		printf("\nSimulation ended successfully! \n");
@@ -126,7 +129,7 @@ void setInfected(int pid, int infected)
 	MPI_Bsend(&infected, 1, MPI_INT, pid, SQUIRREL_TAG, MPI_COMM_WORLD);
 }
 
-void printMonthResults(int gridPid, int activeSquirrels)
+void printMonthResults(int gridPid, int activeSquirrels,int infectedSquirrels)
 {
 	int popInfluxLvl[NCELL];
 	int infectionLvl[NCELL];
@@ -135,7 +138,7 @@ void printMonthResults(int gridPid, int activeSquirrels)
 	MPI_Recv(infectionLvl, NCELL, MPI_INT, gridPid, GRID_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 	MPI_Recv(&month, NCELL, MPI_INT, gridPid, GRID_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 	printf("\n----------------------------------------------------------------------------------------------------------------------------\n");
-	printf("MONTH= %d\t ALIVE SQUIRRELS= %d\n", month, activeSquirrels);
+	printf("MONTH= %d\t ALIVE SQUIRRELS= %d\t INFECTED SQUIRRELS= %d\n", month, activeSquirrels,infectedSquirrels);
 	printf("CELL No\t\t 1\t 2\t 3\t 4\t 5\t 6\t 7\t 8\t 9\t 10\t 11\t 12\t 13\t 14\t 15\t 16\n", month);
 	printf("POPINFLX\t");
 	int i;
@@ -150,13 +153,17 @@ void printMonthResults(int gridPid, int activeSquirrels)
 	}
 }
 
-void receiveSquirrelMsg(MPI_Status status, int *activeSquirrels)
+void receiveSquirrelMsg(MPI_Status status, int *activeSquirrels,int *infectedSquirrels)
 {
 	int data;
 	MPI_Recv(&data, 1, MPI_INT, status.MPI_SOURCE, SQUIRREL_TAG, MPI_COMM_WORLD, &status);
-	if (data == 0)
+	if (data == squirrelDied){
 		(*activeSquirrels)--;
-	else
+		(*infectedSquirrels)--;
+		printf("\nSquirrel Died, alive=%d\t infected=%d\n",*activeSquirrels,*infectedSquirrels);
+
+	}
+	else if(data==newSquirrel)
 	{
 		if ((*activeSquirrels) < MAX_SQUIRRELS)
 		{
@@ -173,5 +180,8 @@ void receiveSquirrelMsg(MPI_Status status, int *activeSquirrels)
 			//shutdownPool();
 			//break;
 		}
+	}
+	else if(data==squirrelInfected){
+		(*infectedSquirrels)++;
 	}
 }

@@ -38,7 +38,7 @@ void Grid_work(int parentID)
     {
         //Check for Squirrel Messages
         int receiveMsg = 0;
-        MPI_Iprobe(MPI_ANY_SOURCE, GRID_TAG, MPI_COMM_WORLD, &receiveMsg, &status);
+        MPI_Iprobe(MPI_ANY_SOURCE, SQUIRREL_TAG, MPI_COMM_WORLD, &receiveMsg, &status);
         if (receiveMsg)
         {
             MPI_Recv(inbound, 2, MPI_INT, status.MPI_SOURCE, SQUIRREL_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
@@ -104,10 +104,10 @@ void Clock_work(int parentID)
     printf("Worker on process %d Clock started! gridPId=%d \n", myRank, gridPid);
     // Tell my parent that I have been alive and am about to die
     double start = MPI_Wtime();
-    while (MPI_Wtime() - start < RUNTIME)
+    while (MPI_Wtime() - start < TIME_STEP*RUNTIME)
     {
         double time = MPI_Wtime();
-        while (MPI_Wtime() - time < 1)
+        while (MPI_Wtime() - time < TIME_STEP)
             ;
       if (DEBUG)  printf("1 month passed!\n");
         MPI_Send(NULL, 0, MPI_INT, gridPid, CLOCK_TAG, MPI_COMM_WORLD);
@@ -130,13 +130,12 @@ void Squirrel_work(int parentID)
     float x, y;
     long state;
     int infected = 0;
+    int firstTime=1;
     MPI_Recv(&infected,1,MPI_INT,0,SQUIRREL_TAG,MPI_COMM_WORLD,MPI_STATUS_IGNORE);
   if (DEBUG)  printf("Worker on process %d, i am the Squirrel, infected=%d  )\n", myRank,infected);
     int infectedSteps = 0;
     squirrelStep(0, 0, &x, &y, &seed);
-    //printf("Initial position %f,%f\n", x, y);
     MPI_Request request[2];
-    // MPI_Irecv(NULL,0,MPI_INT,0,SQUIRREL_TAG,MPI_COMM_WORLD,&request[0]);
     int blocked, flag, cell;
     int step = 0;
     int outbound[2];
@@ -157,7 +156,6 @@ void Squirrel_work(int parentID)
         blocked = 0;
         while (blocked == 0)
         {
-            //MPI_Irecv(inbound, 2, MPI_INT, 1, SQUIRREL_TAG, MPI_COMM_WORLD, &request[1]);
             MPI_Test(&request[1], &blocked, MPI_STATUS_IGNORE);
 
             if (shouldWorkerStop())
@@ -175,7 +173,13 @@ void Squirrel_work(int parentID)
         //Determine if infected
         if(!infected) {
             infected=willCatchDisease(avgInf(infectionLvl), &seed);
+            if(infected&&firstTime){
+                int send=squirrelInfected;
+                MPI_Bsend(&send,1,MPI_INT,0,SQUIRREL_TAG,MPI_COMM_WORLD);
+                firstTime=0;
             }
+            
+        }
         else 
         {
             infectedSteps++;
@@ -185,7 +189,7 @@ void Squirrel_work(int parentID)
         if ((infectedSteps > 50) && willDie(&seed))
         {
             alive = 0;
-            int send=0;
+            int send=squirrelDied;
             //Notify the master that I have died,
             MPI_Bsend(&send,1,MPI_INT,0,SQUIRREL_TAG,MPI_COMM_WORLD);
           if (DEBUG)  printf("Squirrel %d ,I died!\n",myRank);
@@ -198,7 +202,7 @@ void Squirrel_work(int parentID)
             if (willGiveBirth(avgPop(popInflux), &seed))
             {
               if (DEBUG)  printf("New Squirrel!\n");
-                int send=1;
+                int send=newSquirrel;
                 MPI_Bsend(&send,1,MPI_INT,0,SQUIRREL_TAG,MPI_COMM_WORLD);
             }
         }
