@@ -21,18 +21,7 @@ void Grid_work(int parentID)
     int currentMonthPop=0;
     int currentMonthInf=0;
     int i, j;
-    for (i = 0; i < NCELL; i++)
-    {
-        popInfluxLvl[i] = 0;
-        infectionLvl[i] = 0;
-        for (j = 0; j < 3; j++)
-        {
-            populationStore[i][j] = 0;
-            if (j < 2)
-                infectionStore[i][j] = 0;
-        }
-    }
-
+   
    if (DEBUG) printf("Worker on process %d, i am the Grid \n", myRank);
 
     int inMonth = 1;
@@ -86,7 +75,7 @@ void Grid_work(int parentID)
             MPI_Ssend(infectionLvl,NCELL,MPI_INT,0,GRID_TAG,MPI_COMM_WORLD);
             MPI_Ssend(&month,1,MPI_INT,0,GRID_TAG,MPI_COMM_WORLD);
             month++;
-
+            if(DEBUG) printf("Sent month msg to master!\n");
             //Zero this month's values 
             for (i=0;i<NCELL;i++){
                 populationStore[i][month % 3]=0;

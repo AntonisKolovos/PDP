@@ -11,6 +11,9 @@
 static void workerCode();
 
 void setInfected(int, int);
+void printMonthResults(int, int);
+void receiveSquirrelMsg(MPI_Status , int *);
+
 int main(int argc, char *argv[])
 {
 
@@ -43,9 +46,6 @@ int main(int argc, char *argv[])
 		if (DEBUG)
 			printf("Master, my rank=%d \n", myRank);
 
-		int popInfluxLvl[NCELL];
-		int infectionLvl[NCELL];
-		int month;
 		//Create Workers
 		MPI_Request initialWorkerRequests[NWORK];
 		int gridPid = startWorkerProcess(); //Grid pid=1
@@ -69,68 +69,36 @@ int main(int argc, char *argv[])
 			printf("Master, spawned initial squirrels\n");
 
 		int masterStatus = 1;
-		MPI_Irecv(NULL, 0, MPI_INT, clockPid, 0, MPI_COMM_WORLD, &initialWorkerRequests[0]);
 		MPI_Status status;
 		int receiveMsg = 0;
 		while (masterStatus)
 		{
-
-			MPI_Test(&initialWorkerRequests[0], &returnCode, MPI_STATUS_IGNORE);
-			if (returnCode)
+			//Check for termination message from clock
+			receiveMsg = 0;
+			MPI_Iprobe(clockPid, MPI_ANY_TAG, MPI_COMM_WORLD, &receiveMsg, &status);
+			if (receiveMsg)
 			{
+				MPI_Recv(NULL, 0, MPI_INT, clockPid, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 				if (DEBUG)
 					printf("Master shutting down...\n");
-				break;
+				masterStatus = 0;
 			}
+
+			//Check for results message from grid
+			receiveMsg = 0;
+			MPI_Iprobe(gridPid, MPI_ANY_TAG, MPI_COMM_WORLD, &receiveMsg, &status);
+			if (receiveMsg)
+			{
+				printMonthResults(gridPid, activeSquirrels);
+			}
+
+			//Check for Squirrel message
 			receiveMsg = 0;
 			MPI_Iprobe(MPI_ANY_SOURCE, SQUIRREL_TAG, MPI_COMM_WORLD, &receiveMsg, &status);
 			if (receiveMsg)
 			{
-				int data;
-				MPI_Recv(&data, 1, MPI_INT, status.MPI_SOURCE, SQUIRREL_TAG, MPI_COMM_WORLD, &status);
-				if (data == 0)
-					activeSquirrels--;
-				else
-				{
-					if (activeSquirrels < MAX_SQUIRRELS)
-					{
-						int squirrelPid = startWorkerProcess();
-						setActorType(squirrelPid, Squirrel);
-						setInfected(squirrelPid, 0);
-						activeSquirrels++;
-						if (DEBUG)
-							printf("MASTER Spawned new squirrel, Squirells=%d \n", activeSquirrels);
-					}
-					else
-					{
-						//printf("ERROR : EXCEEDED MAX NUM OF SQUIRRELS, TERMINATING...\n");
-						//shutdownPool();
-						//break;
-					}
-				}
+				receiveSquirrelMsg(status, &activeSquirrels);
 			}
-			receiveMsg = 0;
-			MPI_Iprobe(gridPid, GRID_TAG, MPI_COMM_WORLD, &receiveMsg, &status);
-			if (receiveMsg)
-			{
-				MPI_Recv(popInfluxLvl, NCELL, MPI_INT, gridPid, GRID_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-				MPI_Recv(infectionLvl, NCELL, MPI_INT, gridPid, GRID_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-				MPI_Recv(&month, NCELL, MPI_INT, gridPid, GRID_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-				printf("\n----------------------------------------------------------------------------------------------------------------------------\n");
-				printf("MONTH= %d\t ALIVE SQUIRRELS= %d\n", month,activeSquirrels);
-				printf("CELL No\t\t 1\t 2\t 3\t 4\t 5\t 6\t 7\t 8\t 9\t 10\t 11\t 12\t 13\t 14\t 15\t 16\n", month);
-				printf("POPINFLX\t");
-				for (i = 0; i < NCELL; i++)
-				{
-					printf("%d\t ", popInfluxLvl[i]);
-				}
-				printf("\nINFLVL\t\t");
-				for (i = 0; i < NCELL; i++)
-				{
-					printf("%d\t ", infectionLvl[i]);
-				}
-			}
-
 		}
 		printf("\nSimulation ended successfully! \n");
 	}
@@ -156,4 +124,54 @@ static void workerCode()
 void setInfected(int pid, int infected)
 {
 	MPI_Bsend(&infected, 1, MPI_INT, pid, SQUIRREL_TAG, MPI_COMM_WORLD);
+}
+
+void printMonthResults(int gridPid, int activeSquirrels)
+{
+	int popInfluxLvl[NCELL];
+	int infectionLvl[NCELL];
+	int month;
+	MPI_Recv(popInfluxLvl, NCELL, MPI_INT, gridPid, GRID_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+	MPI_Recv(infectionLvl, NCELL, MPI_INT, gridPid, GRID_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+	MPI_Recv(&month, NCELL, MPI_INT, gridPid, GRID_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+	printf("\n----------------------------------------------------------------------------------------------------------------------------\n");
+	printf("MONTH= %d\t ALIVE SQUIRRELS= %d\n", month, activeSquirrels);
+	printf("CELL No\t\t 1\t 2\t 3\t 4\t 5\t 6\t 7\t 8\t 9\t 10\t 11\t 12\t 13\t 14\t 15\t 16\n", month);
+	printf("POPINFLX\t");
+	int i;
+	for (i = 0; i < NCELL; i++)
+	{
+		printf("%d\t ", popInfluxLvl[i]);
+	}
+	printf("\nINFLVL\t\t");
+	for (i = 0; i < NCELL; i++)
+	{
+		printf("%d\t ", infectionLvl[i]);
+	}
+}
+
+void receiveSquirrelMsg(MPI_Status status, int *activeSquirrels)
+{
+	int data;
+	MPI_Recv(&data, 1, MPI_INT, status.MPI_SOURCE, SQUIRREL_TAG, MPI_COMM_WORLD, &status);
+	if (data == 0)
+		(*activeSquirrels)--;
+	else
+	{
+		if ((*activeSquirrels) < MAX_SQUIRRELS)
+		{
+			int squirrelPid = startWorkerProcess();
+			setActorType(squirrelPid, Squirrel);
+			setInfected(squirrelPid, 0);
+			(*activeSquirrels)++;
+			if (DEBUG)
+				printf("MASTER Spawned new squirrel, Squirells=%d \n", activeSquirrels);
+		}
+		else
+		{
+			//printf("ERROR : EXCEEDED MAX NUM OF SQUIRRELS, TERMINATING...\n");
+			//shutdownPool();
+			//break;
+		}
+	}
 }
