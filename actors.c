@@ -21,7 +21,7 @@ void Grid_work(int parentID)
     int currentMonthPop=0;
     int currentMonthInf=0;
     int i, j;
-   
+
    if (DEBUG) printf("Worker on process %d, i am the Grid \n", myRank);
 
     int inMonth = 1;
@@ -36,18 +36,18 @@ void Grid_work(int parentID)
 
     while (running)
     {
-
+        //Check for Squirrel Messages
         int receiveMsg = 0;
         MPI_Iprobe(MPI_ANY_SOURCE, GRID_TAG, MPI_COMM_WORLD, &receiveMsg, &status);
         if (receiveMsg)
         {
-            MPI_Recv(inbound, 2, MPI_INT, status.MPI_SOURCE, GRID_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            MPI_Recv(inbound, 2, MPI_INT, status.MPI_SOURCE, SQUIRREL_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
             sum++;
 
             //Send values to squirrel
             outbound[0] = popInfluxLvl[inbound[0]];
             outbound[1] = infectionLvl[inbound[0]];
-            MPI_Bsend(outbound, 2, MPI_INT, status.MPI_SOURCE, SQUIRREL_TAG, MPI_COMM_WORLD);
+            MPI_Bsend(outbound, 2, MPI_INT, status.MPI_SOURCE, GRID_TAG, MPI_COMM_WORLD);
 
             //Add the squirrel values
             populationStore[inbound[0]][month % 3]++;
@@ -55,6 +55,7 @@ void Grid_work(int parentID)
            
         }
 
+        //Check for Clock Message
         int flag = 0;
         MPI_Iprobe(2, CLOCK_TAG, MPI_COMM_WORLD, &flag, &status);
 
@@ -63,9 +64,6 @@ void Grid_work(int parentID)
             MPI_Recv(NULL, 0, MPI_INT, 2, CLOCK_TAG, MPI_COMM_WORLD, &status);
            if (DEBUG) printf("Grid received clock signal, month=%d, sum=%d \n", month + 1, sum);
 
-
-              
-            
             //calculate the current values
             calcInfectionLvl(infectionStore, infectionLvl);
             calcPopInfux(populationStore, popInfluxLvl);
@@ -154,8 +152,8 @@ void Squirrel_work(int parentID)
         outbound[1] = infected;
         //Send the data
 
-        MPI_Bsend(outbound, 2, MPI_INT, 1, GRID_TAG, MPI_COMM_WORLD);
-        MPI_Irecv(inbound, 2, MPI_INT, 1, SQUIRREL_TAG, MPI_COMM_WORLD, &request[1]);
+        MPI_Bsend(outbound, 2, MPI_INT, 1, SQUIRREL_TAG, MPI_COMM_WORLD);
+        MPI_Irecv(inbound, 2, MPI_INT, 1, GRID_TAG, MPI_COMM_WORLD, &request[1]);
         blocked = 0;
         while (blocked == 0)
         {
