@@ -1,16 +1,16 @@
 CC=mpicc
 CFLAGS= -lm
-DEPS = pool.h actors.h squirrel-functions.h ran2.h
-OBJ = pool.o test.o actors.o squirrel-functions.o ran2.o
+DEPS = pool.h parameters.h squirrel-functions.h ran2.h clock.h grid.h squirrel.h
+OBJ = pool.o main.o squirrel-functions.o ran2.o clock.o squirrel.o grid.o
 
 %.o: %.c $(DEPS)
 	$(CC) -c -o $@ $< $(CFLAGS)
 
-test: $(OBJ)
+simulation: $(OBJ)
 	$(CC) -o $@ $^ $(CFLAGS)
 
 .PHONY: clean
 
 clean:
-	rm -f *.o  test
+	rm -f *.o  main
 

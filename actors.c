@@ -173,6 +173,7 @@ void Squirrel_work(int parentID)
         //Determine if infected
         if(!infected) {
             infected=willCatchDisease(avgInf(infectionLvl), &seed);
+            //If infected, send message to the master, only once
             if(infected&&firstTime){
                 int send=squirrelInfected;
                 MPI_Bsend(&send,1,MPI_INT,0,SQUIRREL_TAG,MPI_COMM_WORLD);
@@ -206,7 +207,6 @@ void Squirrel_work(int parentID)
                 MPI_Bsend(&send,1,MPI_INT,0,SQUIRREL_TAG,MPI_COMM_WORLD);
             }
         }
-        //  MPI_Wait(&request[0],MPI_STATUS_IGNORE);
         if(alive)step++;
     }
   if (DEBUG)  printf("Squirrel has stopped step=%d\n", step);

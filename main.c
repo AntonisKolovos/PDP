@@ -1,12 +1,16 @@
 /*
- * Example code to run and test the process pool. To compile use something like mpicc -o test test.c pool.c
+ * Author:B158495
+ * Simulation paremeters can be set in actors.h
  */
 
 #include <stdio.h>
 #include "mpi.h"
 #include "pool.h"
 #include "squirrel-functions.h"
-#include "actors.h"
+#include "parameters.h"
+#include "clock.h"
+#include "grid.h"
+#include "squirrel.h"
 
 static void workerCode();
 
@@ -112,6 +116,8 @@ int main(int argc, char *argv[])
 	return 0;
 }
 
+
+
 static void workerCode()
 {
 	int parentID = getCommandData();
@@ -123,6 +129,7 @@ static void workerCode()
 	else if (myActor == Squirrel)
 		Squirrel_work(parentID);
 }
+
 
 void setInfected(int pid, int infected)
 {
@@ -160,7 +167,7 @@ void receiveSquirrelMsg(MPI_Status status, int *activeSquirrels,int *infectedSqu
 	if (data == squirrelDied){
 		(*activeSquirrels)--;
 		(*infectedSquirrels)--;
-		printf("\nSquirrel Died, alive=%d\t infected=%d\n",*activeSquirrels,*infectedSquirrels);
+		if(DEBUG) printf("\nSquirrel Died, alive=%d\t infected=%d\n",*activeSquirrels,*infectedSquirrels);
 
 	}
 	else if(data==newSquirrel)
