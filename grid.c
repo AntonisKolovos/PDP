@@ -23,7 +23,7 @@ void Grid_work(int parentID)
    if (DEBUG) printf("Worker on process %d, i am the Grid \n", myRank);
 
     int inMonth = 1;
-    int month = 0;
+    int month = 1;
     MPI_Status status;
     int inbound[2], outbound[2];
     int running = 1;

@@ -26,7 +26,7 @@ void Squirrel_work(int parentID)
     int infectedSteps = 0;
     //Get initial position
     squirrelStep(0, 0, &x, &y, &seed);
-    MPI_Request request[2];
+    MPI_Request request;
     int blocked, flag, cell;
     int step = 0;
     int outbound[2];
@@ -45,12 +45,12 @@ void Squirrel_work(int parentID)
         MPI_Bsend(outbound, 2, MPI_INT, 1, SQUIRREL_TAG, MPI_COMM_WORLD);
 
         //Issue receive for the cell data
-        MPI_Irecv(inbound, 2, MPI_INT, 1, GRID_TAG, MPI_COMM_WORLD, &request[1]);
+        MPI_Irecv(inbound, 2, MPI_INT, 1, GRID_TAG, MPI_COMM_WORLD, &request);
         blocked = 0;
         //Block until i receive the data or the simulation terminates
         while (blocked == 0)
         {
-            MPI_Test(&request[1], &blocked, MPI_STATUS_IGNORE);
+            MPI_Test(&request, &blocked, MPI_STATUS_IGNORE);
 
             if (shouldWorkerStop())
             {

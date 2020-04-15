@@ -16,13 +16,23 @@ static void workerCode();
 
 void setInfected(int, int);
 void printMonthResults(int, int,int);
-void receiveSquirrelMsg(MPI_Status , int *,int*);
+void receiveSquirrelMsg(MPI_Status , int *,int*,int*);
 
 int main(int argc, char *argv[])
 {
 
 	// Call MPI initialize first
 	MPI_Init(&argc, &argv);
+
+	int world_size,myrank;
+	MPI_Comm_rank(MPI_COMM_WORLD,&myrank);
+	MPI_Comm_size(MPI_COMM_WORLD,&world_size);
+	if(world_size<(MAX_SQUIRRELS+3)){
+		if(myrank==0)printf("Error: Not enough processes must have at least Max Squirrels + 3 \n");
+		MPI_Finalize();
+		exit(0);
+	}
+
 	/*
 	 * Initialise the process pool.
      * The return code is = 1 for worker to do some work, 0 for do nothing and stop and 2 for this is the master so call master poll
@@ -51,7 +61,6 @@ int main(int argc, char *argv[])
 			printf("Master, my rank=%d \n", myRank);
 
 		//Create Workers
-		MPI_Request initialWorkerRequests[NWORK];
 		int gridPid = startWorkerProcess(); //Grid pid=1
 		setActorType(gridPid, Grid);
 		int clockPid = startWorkerProcess(); //Clock pid =2
@@ -104,7 +113,7 @@ int main(int argc, char *argv[])
 			MPI_Iprobe(MPI_ANY_SOURCE, SQUIRREL_TAG, MPI_COMM_WORLD, &receiveMsg, &status);
 			if (receiveMsg)
 			{
-				receiveSquirrelMsg(status, &activeSquirrels,&infectedSquirrels);
+				receiveSquirrelMsg(status, &activeSquirrels,&infectedSquirrels,&masterStatus);
 			}
 		}
 		printf("\nSimulation ended successfully! \n");
@@ -160,7 +169,7 @@ void printMonthResults(int gridPid, int activeSquirrels,int infectedSquirrels)
 	}
 }
 
-void receiveSquirrelMsg(MPI_Status status, int *activeSquirrels,int *infectedSquirrels)
+void receiveSquirrelMsg(MPI_Status status, int *activeSquirrels,int *infectedSquirrels,int *masterStatus)
 {
 	int data;
 	MPI_Recv(&data, 1, MPI_INT, status.MPI_SOURCE, SQUIRREL_TAG, MPI_COMM_WORLD, &status);
@@ -183,9 +192,12 @@ void receiveSquirrelMsg(MPI_Status status, int *activeSquirrels,int *infectedSqu
 		}
 		else
 		{
-			//printf("ERROR : EXCEEDED MAX NUM OF SQUIRRELS, TERMINATING...\n");
-			//shutdownPool();
-			//break;
+			if(STOP_MAX_SQUIRRELS){
+				printf("ERROR : EXCEEDED MAX NUM OF SQUIRRELS, TERMINATING...\n");
+				shutdownPool();
+				*masterStatus=0;
+			}
+			
 		}
 	}
 	else if(data==squirrelInfected){

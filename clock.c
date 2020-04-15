@@ -16,13 +16,14 @@ void Clock_work(int parentID)
     if(DEBUG) printf("Worker on process %d Clock started! gridPId=%d \n", myRank, gridPid);
 
 
-    double start = MPI_Wtime();
+    int month=0;
     //Run for the specified timesteps
-    while (MPI_Wtime() - start < TIME_STEP*RUNTIME)
+    while (month < RUNTIME)
     {
         double time = MPI_Wtime();
         //Wait for the time step time
         while (MPI_Wtime() - time < TIME_STEP);
+        month++;
         if (DEBUG)  printf("1 month passed!\n");
 
         //Send message to the grid that the month has passed
