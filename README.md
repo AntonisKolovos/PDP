@@ -28,7 +28,7 @@ processes available. The program requires 1 process for every squirrel+3.
 
 # Example output 
 Example output for 10 initial squirrels, of which 1 infected and a max number of 33
-'''
+```
 ----------------------------------------------------------------------------------------------------------------------------
 MONTH= 1         ALIVE SQUIRRELS= 9      INFECTED SQUIRRELS= 0
 CELL No          1       2       3       4       5       6       7       8       9       10      11      12      13      14      15      16
@@ -80,4 +80,4 @@ CELL No          1       2       3       4       5       6       7       8      
 POPINFLX        0        0       0       0       0       0       0       0       0       0       0       0       0       0       0       0       
 INFLVL          0        0       0       0       0       0       0       0       0       0       0       0       0       0       0       0  
 
-'''
+```
